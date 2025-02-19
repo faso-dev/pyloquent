@@ -15,17 +15,17 @@ T = TypeVar('T', bound=ModelType)
 
 class QueryBuilder(BuilderInterface):
     """
-    Builder pour construire des requêtes SQL de manière fluide.
+    Builder to build SQL queries fluently.
     
     Example:
-        # Requête simple
+        # Simple query
         users = User.query()\
             .where('age', '>=', 18)\
             .where('status', '=', 'active')\
             .order_by('created_at', 'desc')\
             .get()
             
-        # Avec relations
+        # With relations
         posts = Post.query()\
             .with_('author')\
             .with_('comments', lambda q:
@@ -35,7 +35,7 @@ class QueryBuilder(BuilderInterface):
             .where('is_published', True)\
             .paginate()
             
-        # Requêtes avancées
+        # Advanced queries
         users = User.query()\
             .where_has('posts', lambda q:
                 q.where('views', '>', 1000)
@@ -60,7 +60,12 @@ class QueryBuilder(BuilderInterface):
         self._after_load_callbacks: List[Callable] = []
         
     def select(self, *columns: str) -> 'QueryBuilder':
-        """Spécifie les colonnes à sélectionner."""
+        """
+        Specify the columns to select.
+        
+        Example:
+            query.select('name', 'email')
+        """
         self._query = select(*[getattr(self.model, col) for col in columns])
         return self
         
@@ -71,7 +76,7 @@ class QueryBuilder(BuilderInterface):
         value: Any = None
     ) -> 'QueryBuilder':
         """
-        Ajoute une condition WHERE.
+        Add a WHERE condition.
         
         Example:
             query.where('age', '>=', 18)
@@ -89,42 +94,87 @@ class QueryBuilder(BuilderInterface):
         operator: Union[str, Operator],
         value: Any = None
     ) -> 'QueryBuilder':
-        """Ajoute une condition OR WHERE."""
+        """
+        Add an OR WHERE condition.
+        
+        Example:
+            query.or_where('age', Operator.EQUAL, 18)
+        """
         group = FilterGroup()
         group.add_condition(column, operator, value)
         self._or_filters.append(group)
         return self
         
     def where_in(self, column: str, values: List[Any]) -> 'QueryBuilder':
-        """Ajoute une condition WHERE IN."""
+        """
+        Add a condition WHERE IN.
+        
+        Example:
+            query.where_in('age', [20, 30])
+        """
         return self.where(column, Operator.IN, values)
         
     def where_not_in(self, column: str, values: List[Any]) -> 'QueryBuilder':
-        """Ajoute une condition WHERE NOT IN."""
+        """
+        Add a condition WHERE NOT IN.
+        
+        Example:
+            query.where_not_in('age', [20, 30])
+        """
         return self.where(column, Operator.NOT_IN, values)
         
     def where_null(self, column: str) -> 'QueryBuilder':
-        """Ajoute une condition WHERE IS NULL."""
+        """
+        Add a condition WHERE IS NULL.
+        
+        Example:
+            query.where_null('age')
+        """
         return self.where(column, Operator.NULL)
         
     def where_not_null(self, column: str) -> 'QueryBuilder':
-        """Ajoute une condition WHERE IS NOT NULL."""
+        """
+        Add a condition WHERE IS NOT NULL.
+        
+        Example:
+            query.where_not_null('age')
+        """
         return self.where(column, Operator.NOT_NULL)
         
     def where_between(self, column: str, values: List[Any]) -> 'QueryBuilder':
-        """Ajoute une condition WHERE BETWEEN."""
+        """
+        Add a condition WHERE BETWEEN.
+        
+        Example:
+            query.where_between('age', [20, 30])
+        """
         return self.where(column, Operator.BETWEEN, values)
         
     def where_not_between(self, column: str, values: List[Any]) -> 'QueryBuilder':
-        """Ajoute une condition WHERE NOT BETWEEN."""
+        """
+        Add a condition WHERE NOT BETWEEN.
+        
+        Example:
+            query.where_not_between('age', [20, 30])
+        """
         return self.where(column, Operator.NOT_BETWEEN, values)
         
     def where_like(self, column: str, pattern: str) -> 'QueryBuilder':
-        """Ajoute une condition WHERE LIKE."""
+        """
+        Add a condition WHERE LIKE.
+        
+        Example:
+            query.where_like('name', '%John%')
+        """
         return self.where(column, Operator.LIKE, pattern)
         
     def where_ilike(self, column: str, pattern: str) -> 'QueryBuilder':
-        """Ajoute une condition WHERE ILIKE."""
+        """
+        Add a condition WHERE ILIKE.
+        
+        Example:
+            query.where_ilike('name', '%John%')
+        """
         return self.where(column, Operator.ILIKE, pattern)
         
     def where_has(
@@ -133,14 +183,40 @@ class QueryBuilder(BuilderInterface):
         callback: Optional[Callable[['QueryBuilder'], None]] = None
     ) -> 'QueryBuilder':
         """
-        Filtre par l'existence d'une relation.
+        Filter by the existence of a relation.
         
         Example:
-            query.where_has('posts', lambda q:
+            # Find users with posts with more than 1000 views
+            User.query().where_has('posts', lambda q:
                 q.where('views', '>', 1000)
             )
+            
+            # Find posts with at least one comment
+            Post.query().where_has('comments')
         """
-        # TODO: Implémenter la logique de relation exists
+        # Retrieve the relation of the model
+        if not hasattr(self.model, relation):
+            raise InvalidQueryException(f"Relation {relation} not found on {self.model.__name__}")
+        
+        relation_obj = getattr(self.model, relation)()
+        
+        # Create a subquery for the relation
+        subquery = relation_obj.get_query()
+        
+        # Apply additional constraints if provided
+        if callback:
+            callback(subquery)
+        
+        # Add the join condition
+        subquery = subquery.where(
+            relation_obj.get_foreign_key(),
+            '=',
+            getattr(self.model, relation_obj.get_local_key())
+        )
+        
+        # Add the EXISTS condition to the main query
+        self._query = self._query.where(subquery.exists())
+        
         return self
         
     def where_doesnt_have(
@@ -149,12 +225,40 @@ class QueryBuilder(BuilderInterface):
         callback: Optional[Callable[['QueryBuilder'], None]] = None
     ) -> 'QueryBuilder':
         """
-        Filtre par l'absence d'une relation.
+        Filter by the absence of a relation.
         
         Example:
-            query.where_doesnt_have('suspensions')
+            # Find users who don't have posts
+            User.query().where_doesnt_have('posts')
+            
+            # Find posts that don't have approved comments
+            Post.query().where_doesnt_have('comments', lambda q:
+                q.where('is_approved', True)
+            )
         """
-        # TODO: Implémenter la logique de relation doesn't exist
+        # Retrieve the relation of the model
+        if not hasattr(self.model, relation):
+            raise InvalidQueryException(f"Relation {relation} not found on {self.model.__name__}")
+        
+        relation_obj = getattr(self.model, relation)()
+        
+        # Create a subquery for the relation
+        subquery = relation_obj.get_query()
+        
+        # Apply additional constraints if provided
+        if callback:
+            callback(subquery)
+        
+        # Add the join condition
+        subquery = subquery.where(
+            relation_obj.get_foreign_key(),
+            '=',
+            getattr(self.model, relation_obj.get_local_key())
+        )
+        
+        # Add the NOT EXISTS condition to the main query
+        self._query = self._query.where(~subquery.exists())
+        
         return self
         
     def with_(
@@ -163,7 +267,7 @@ class QueryBuilder(BuilderInterface):
         callback: Optional[Callable[['QueryBuilder'], None]] = None
     ) -> 'QueryBuilder':
         """
-        Charge une relation eagerly.
+        Load a relation eagerly.
         
         Example:
             query.with_('posts')
@@ -173,7 +277,7 @@ class QueryBuilder(BuilderInterface):
         """
         self._eager_loads[relation] = callback
         
-        # Ajoute automatiquement le callback pour marquer la relation comme chargée
+        # Automatically add the callback to mark the relation as loaded
         def mark_loaded(model):
             if not hasattr(model, '_loaded_relations'):
                 model._loaded_relations = set()
@@ -184,25 +288,25 @@ class QueryBuilder(BuilderInterface):
         
     def order_by(self, column: str, direction: str = 'asc') -> 'QueryBuilder':
         """
-        Ajoute un ORDER BY.
+        Add an ORDER BY.
         
         Example:
             query.order_by('created_at', 'desc')
         """
         direction = direction.lower()
         if direction not in ('asc', 'desc'):
-            raise InvalidQueryException(f"Direction invalide: {direction}")
+            raise InvalidQueryException(f"Invalid direction: {direction}")
             
         self._orders.append({'column': column, 'direction': direction})
         return self
         
     def order_by_desc(self, column: str) -> 'QueryBuilder':
-        """Ajoute un ORDER BY DESC."""
+        """Add a DESC ORDER BY."""
         return self.order_by(column, 'desc')
         
     def group_by(self, *columns: str) -> 'QueryBuilder':
         """
-        Ajoute un GROUP BY.
+        Add a GROUP BY.
         
         Example:
             query.group_by('status', 'role')
@@ -212,25 +316,25 @@ class QueryBuilder(BuilderInterface):
         
     def take(self, limit: int) -> 'QueryBuilder':
         """
-        Limite le nombre de résultats.
+        Limit the number of results.
         
         Example:
             query.take(5)  # LIMIT 5
         """
         if limit < 0:
-            raise InvalidQueryException("La limite doit être positive")
+            raise InvalidQueryException("The limit must be positive")
         self._limit = limit
         return self
         
     def skip(self, offset: int) -> 'QueryBuilder':
         """
-        Skip un nombre de résultats.
+        Skip a number of results.
         
         Example:
             query.skip(10)  # OFFSET 10
         """
         if offset < 0:
-            raise InvalidQueryException("L'offset doit être positif")
+            raise InvalidQueryException("The offset must be positive")
         self._offset = offset
         return self
         
@@ -242,12 +346,12 @@ class QueryBuilder(BuilderInterface):
         query_params: Optional[Dict[str, Any]] = None
     ) -> LengthAwarePaginator[T]:
         """
-        Pagine les résultats avec nombre total.
+        Paginate the results with total number.
         
         Example:
             result = query.paginate(page=2, per_page=15)
             
-            # Avec path pour les liens
+            # With path for links
             result = query.paginate(
                 page=2,
                 path='/api/users',
@@ -255,7 +359,7 @@ class QueryBuilder(BuilderInterface):
             )
         """
         if page < 1:
-            raise InvalidQueryException("Le numéro de page doit être positif")
+            raise InvalidQueryException("The page number must be positive")
             
         total = self.count()
         items = self.skip((page - 1) * per_page).take(per_page).get()
@@ -277,13 +381,13 @@ class QueryBuilder(BuilderInterface):
         before: Any = None
     ) -> CursorPaginator[T]:
         """
-        Pagine les résultats avec curseur.
+        Paginate the results with cursor.
         
         Example:
-            # Première page
+            # First page
             result = query.cursor_paginate(limit=20)
             
-            # Page suivante
+            # Next page
             next_page = query.cursor_paginate(
                 after=result.next_cursor,
                 limit=20
@@ -295,7 +399,7 @@ class QueryBuilder(BuilderInterface):
             'before': before
         }
         
-        self.take(limit + 1)  # +1 pour vérifier s'il y a une page suivante
+        self.take(limit + 1)  # +1 to check if there is a next page
         
         if after:
             self.where(cursor_field, '>', after)
@@ -319,14 +423,14 @@ class QueryBuilder(BuilderInterface):
         
     def get(self) -> List[T]:
         """
-        Exécute la requête et retourne les résultats.
+        Execute the query and return the results.
         
         Example:
             users = query.where('active', True).get()
         """
         results = self._execute_query()
         
-        # Exécute les callbacks after_load
+        # Execute the after_load callbacks
         for result in results:
             for callback in self._after_load_callbacks:
                 callback(result)
@@ -335,7 +439,7 @@ class QueryBuilder(BuilderInterface):
         
     def first(self) -> Optional[T]:
         """
-        Retourne le premier résultat.
+        Return the first result.
         
         Example:
             user = query.where('email', email).first()
@@ -346,7 +450,7 @@ class QueryBuilder(BuilderInterface):
         
     def find(self, id: Any) -> Optional[T]:
         """
-        Trouve un modèle par son ID.
+        Find a model by its ID.
         
         Example:
             user = User.query().find(5)
@@ -355,11 +459,11 @@ class QueryBuilder(BuilderInterface):
         
     def find_or_fail(self, id: Any) -> T:
         """
-        Trouve un modèle par son ID ou lève une exception.
+        Find a model by its ID or raise a ModelNotFoundException.
         
         Example:
             user = User.query().find_or_fail(5)
-            # Lève ModelNotFoundException si non trouvé
+            # Raise ModelNotFoundException if not found
         """
         result = self.find(id)
         if result is None:
@@ -368,18 +472,18 @@ class QueryBuilder(BuilderInterface):
         
     def count(self) -> int:
         """
-        Compte le nombre total de résultats.
+        Count the total number of results.
         
         Example:
             count = query.where('active', True).count()
         """
-        # Crée une sous-requête avec les filtres actuels
+        # Create a subquery with the current filters
         subquery = self._build_query()
         
-        # Crée une nouvelle requête COUNT sur la sous-requête
+        # Create a new COUNT query on the subquery
         count_query = select(func.count()).select_from(subquery)
         
-        # Exécute la requête
+        # Execute the query
         session = self.model.get_session()
         result = session.execute(count_query).scalar()
         
@@ -387,21 +491,21 @@ class QueryBuilder(BuilderInterface):
         
     def exists(self) -> bool:
         """
-        Vérifie si la requête retourne des résultats.
+        Check if the query returns results.
         
         Example:
             if query.where('email', email).exists():
-                print("Email déjà utilisé")
+                print("Email already used")
         """
         # Optimise en limitant à 1 résultat
         return self.take(1).get() != []
         
     def _execute_query(self, query=None) -> List[T]:
         """
-        Exécute la requête SQL.
+        Execute the SQL query.
         
         Args:
-            query: Requête SQL optionnelle. Si non fournie, utilise _build_query()
+            query: Optional SQL query. If not provided, use _build_query()
         """
         if query is None:
             query = self._build_query()
@@ -410,15 +514,15 @@ class QueryBuilder(BuilderInterface):
         return session.execute(query).scalars().all()
         
     def _build_query(self) -> Select:
-        """Construit la requête SQL avec toutes les clauses."""
+        """Build the SQL query with all clauses."""
         query = self._query
         
-        # Ajoute les conditions WHERE
+        # Add WHERE conditions
         if self._filters:
             conditions = [self._build_condition(f) for f in self._filters]
             query = query.where(and_(*conditions))
             
-        # Ajoute les conditions OR WHERE
+        # Add OR WHERE conditions
         if self._or_filters:
             or_conditions = [
                 and_(*[self._build_condition(c) for c in group.conditions])
@@ -426,18 +530,18 @@ class QueryBuilder(BuilderInterface):
             ]
             query = query.where(or_(*or_conditions))
             
-        # Ajoute les ORDER BY
+        # Add ORDER BY
         for order in self._orders:
             column = getattr(self.model, order['column'])
             query = query.order_by(
                 desc(column) if order['direction'] == 'desc' else asc(column)
             )
             
-        # Ajoute les GROUP BY
+        # Add GROUP BY
         if self._groups:
             query = query.group_by(*[getattr(self.model, col) for col in self._groups])
             
-        # Ajoute LIMIT/OFFSET
+        # Add LIMIT/OFFSET
         if self._limit is not None:
             query = query.limit(self._limit)
         if self._offset is not None:
@@ -447,13 +551,13 @@ class QueryBuilder(BuilderInterface):
 
     def _build_condition(self, condition: FilterCondition) -> Any:
         """
-        Construit une condition SQL à partir d'une FilterCondition.
+        Build an SQL condition from a FilterCondition.
         
         Args:
-            condition: La condition à construire
+            condition: The condition to build
             
         Returns:
-            Une expression SQLAlchemy
+            An SQLAlchemy expression
         """
         column = getattr(self.model, condition.field)
         
@@ -485,13 +589,13 @@ class QueryBuilder(BuilderInterface):
         
     def _add_eager_loads(self, query: Select) -> Select:
         """
-        Ajoute les chargements eager des relations.
+        Add eager loads of relations.
         
         Args:
-            query: La requête à modifier
+            query: The query to modify
             
         Returns:
-            La requête modifiée
+            The modified query
         """
         for relation, callback in self._eager_loads.items():
             loader = joinedload(getattr(self.model, relation))
@@ -505,11 +609,11 @@ class QueryBuilder(BuilderInterface):
             
         return query
         
-    # Méthodes d'agrégation
+    # Aggregation methods
     
     def max(self, column: str) -> Any:
         """
-        Retourne la valeur maximum d'une colonne.
+        Return the maximum value of a column.
         
         Example:
             max_price = Product.query().max('price')
@@ -518,7 +622,7 @@ class QueryBuilder(BuilderInterface):
         
     def min(self, column: str) -> Any:
         """
-        Retourne la valeur minimum d'une colonne.
+        Return the minimum value of a column.
         
         Example:
             min_age = User.query().min('age')
@@ -527,7 +631,7 @@ class QueryBuilder(BuilderInterface):
         
     def sum(self, column: str) -> Any:
         """
-        Retourne la somme d'une colonne.
+        Return the sum of a column.
         
         Example:
             total_sales = Order.query().sum('amount')
@@ -536,7 +640,7 @@ class QueryBuilder(BuilderInterface):
         
     def avg(self, column: str) -> float:
         """
-        Retourne la moyenne d'une colonne.
+        Return the average of a column.
         
         Example:
             avg_rating = Product.query().avg('rating')
@@ -545,16 +649,16 @@ class QueryBuilder(BuilderInterface):
         
     def chunk(self, count: int, callback: Callable[[List[T]], None]) -> bool:
         """
-        Traite les résultats par lots.
+        Process results in chunks.
         
         Args:
-            count: Taille du lot
-            callback: Fonction à appeler pour chaque lot
+            count: The size of the chunk
+            callback: Function to call for each chunk
             
         Example:
             User.query().chunk(100, lambda users:
                 for user in users:
-                    # Traitement par lot
+                    # Process by chunk
                     process_user(user)
             )
         """
@@ -577,15 +681,15 @@ class QueryBuilder(BuilderInterface):
         
     def each(self, callback: Callable[[T], None], count: int = 100) -> bool:
         """
-        Traite chaque résultat individuellement par lots.
+        Process each result individually in chunks.
         
         Args:
-            callback: Fonction à appeler pour chaque élément
-            count: Taille du lot
+            callback: Function to call for each element
+            count: The size of the chunk
             
         Example:
             User.query().each(lambda user:
-                # Traitement individuel
+                # Process individually
                 process_user(user)
             )
         """
@@ -593,10 +697,10 @@ class QueryBuilder(BuilderInterface):
         
     def update(self, values: Dict[str, Any]) -> int:
         """
-        Met à jour les enregistrements qui correspondent à la requête.
+        Update the records that match the query.
         
         Example:
-            # Met à jour le statut de tous les utilisateurs inactifs
+            # Update the status of all inactive users
             User.query()\
                 .where('last_login', '<', '2023-01-01')\
                 .update({'status': 'inactive'})
@@ -610,10 +714,10 @@ class QueryBuilder(BuilderInterface):
         
     def delete(self) -> int:
         """
-        Supprime les enregistrements qui correspondent à la requête.
+        Delete the records that match the query.
         
         Example:
-            # Supprime tous les posts non publiés
+            # Delete all unpublished posts
             Post.query()\
                 .where('status', '=', 'draft')\
                 .where('created_at', '<', '2023-01-01')\
@@ -626,10 +730,10 @@ class QueryBuilder(BuilderInterface):
         
     def force_delete(self) -> int:
         """
-        Supprime définitivement les enregistrements (ignore le soft delete).
+        Delete the records definitively (ignore the soft delete).
         
         Example:
-            # Supprime définitivement les utilisateurs marqués comme supprimés
+            # Delete definitively the users marked as deleted
             User.query()\
                 .only_trashed()\
                 .where('deleted_at', '<', '2022-01-01')\
@@ -642,7 +746,7 @@ class QueryBuilder(BuilderInterface):
     
     def with_trashed(self) -> 'QueryBuilder':
         """
-        Inclut les enregistrements soft-deleted dans la requête.
+        Include the soft-deleted records in the query.
         
         Example:
             users = User.query().with_trashed().get()
@@ -652,7 +756,7 @@ class QueryBuilder(BuilderInterface):
         
     def only_trashed(self) -> 'QueryBuilder':
         """
-        Retourne uniquement les enregistrements soft-deleted.
+        Return only the soft-deleted records.
         
         Example:
             deleted_users = User.query().only_trashed().get()
@@ -662,10 +766,10 @@ class QueryBuilder(BuilderInterface):
         
     def restore(self) -> int:
         """
-        Restaure les enregistrements soft-deleted.
+        Restore the soft-deleted records.
         
         Example:
-            # Restaure les utilisateurs récemment supprimés
+            # Restore the recently deleted users
             User.query()\
                 .only_trashed()\
                 .where('deleted_at', '>', '2023-01-01')\
@@ -677,7 +781,7 @@ class QueryBuilder(BuilderInterface):
     
     def with_global_scope(self, scope: 'Scope') -> 'QueryBuilder':
         """
-        Ajoute un scope global à la requête.
+        Add a global scope to the query.
         
         Example:
             query.with_global_scope(ActiveScope())
@@ -687,7 +791,7 @@ class QueryBuilder(BuilderInterface):
         
     def without_global_scope(self, scope: Union[Type['Scope'], 'Scope']) -> 'QueryBuilder':
         """
-        Désactive un scope global pour cette requête.
+        Disable a global scope for this query.
         
         Example:
             query.without_global_scope(SoftDeleteScope)
@@ -697,7 +801,7 @@ class QueryBuilder(BuilderInterface):
         
     def without_global_scopes(self) -> 'QueryBuilder':
         """
-        Désactive tous les scopes globaux pour cette requête.
+        Disable all global scopes for this query.
         
         Example:
             query.without_global_scopes().get()
@@ -709,7 +813,7 @@ class QueryBuilder(BuilderInterface):
     
     def clone(self) -> 'QueryBuilder':
         """
-        Crée une copie de la requête actuelle.
+        Create a copy of the current query.
         
         Example:
             new_query = query.clone()
@@ -729,7 +833,7 @@ class QueryBuilder(BuilderInterface):
         
     def tap(self, callback: Callable[['QueryBuilder'], None]) -> 'QueryBuilder':
         """
-        Exécute une fonction sur la requête et retourne la requête.
+        Execute a function on the query and return the query.
         
         Example:
             query.tap(lambda q: print(q._build_query()))
@@ -744,7 +848,7 @@ class QueryBuilder(BuilderInterface):
         false_callback: Optional[Callable[['QueryBuilder'], None]] = None
     ) -> 'QueryBuilder':
         """
-        Applique conditionnellement des modifications à la requête.
+        Apply conditionally modifications to the query.
         
         Example:
             query.when(
@@ -761,6 +865,6 @@ class QueryBuilder(BuilderInterface):
         return self
         
     def after_load(self, callback: Callable) -> 'QueryBuilder':
-        """Ajoute un callback à exécuter après le chargement"""
+        """Add a callback to execute after loading"""
         self._after_load_callbacks.append(callback)
         return self 
