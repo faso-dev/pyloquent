@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Type, Optional, ClassVar, TypeVar
 from pydantic import BaseModel
 
+from .interfaces import ResourceInterface, ResourceCollectionInterface
+from .concerns.mixins import ConditionalFieldsMixin, RelationshipFieldsMixin
 from .interfaces import ResourceInterface
 from .concerns.mixins import ConditionalFieldsMixin, RelationshipFieldsMixin
 from ..types import ModelType
@@ -8,7 +10,7 @@ from ..types import ModelType
 T = TypeVar('T', bound=ModelType)
 
 class Resource(ResourceInterface[T], ConditionalFieldsMixin, RelationshipFieldsMixin):
-    """Resource de base pour la transformation de modèles"""
+    """Base resource for model transformation"""
     
     Schema: ClassVar[Optional[Type[BaseModel]]] = None
     
@@ -22,10 +24,10 @@ class Resource(ResourceInterface[T], ConditionalFieldsMixin, RelationshipFieldsM
         return self._to_dict()
         
     def _to_dict(self) -> Dict[str, Any]:
-        """À implémenter dans les classes enfants"""
+        """To implement in child classes"""
         raise NotImplementedError()
         
     @classmethod
-    def collection(cls, models: List[T]) -> 'ResourceCollection':
+    def collection(cls, models: List[T]) -> 'ResourceCollectionInterface':
         from .resource_collection import ResourceCollection
         return ResourceCollection([cls(model) for model in models]) 

@@ -8,7 +8,7 @@ T = TypeVar('T', bound=Model)
 
 class RelationshipFields:
     """
-    Mixin pour gérer les relations dans les Resources.
+    Mixin to handle relationships in Resources.
     
     Example:
         class UserResource(Resource):
@@ -47,13 +47,13 @@ class RelationshipFields:
         include: List[str] = None
     ) -> Any:
         """
-        Gère une relation avec transformation optionnelle.
+        Handle a relationship with optional transformation.
         
         Args:
-            name: Nom de la relation
-            resource: Resource à utiliser
-            transformer: Fonction de transformation optionnelle
-            include: Relations à inclure
+            name: Name of the relation
+            resource: Resource to use
+            transformer: Optional transformation function
+            include: Relations to include
             
         Example:
             'posts': self.relation('posts', PostResource, 
@@ -83,12 +83,12 @@ class RelationshipFields:
         meta: dict
     ) -> dict:
         """
-        Gère une relation avec métadonnées.
+        Handle a relationship with metadata.
         
         Args:
-            name: Nom de la relation
-            resource: Resource à utiliser
-            meta: Dictionnaire de métadonnées avec callables
+            name: Name of the relation
+            resource: Resource to use
+            meta: Dictionary of metadata with callables
             
         Example:
             'comments': self.relation_with_meta('comments', CommentResource, {
@@ -120,12 +120,12 @@ class RelationshipFields:
         nested: List[Union[str, dict]]
     ) -> dict:
         """
-        Gère une relation avec relations imbriquées.
+        Handle a relationship with nested relations.
         
         Args:
-            name: Nom de la relation
-            resource: Resource à utiliser
-            nested: Liste des relations à inclure
+            name: Name of the relation
+            resource: Resource to use
+            nested: List of relations to include
             
         Example:
             'company': self.nested_relation('company', CompanyResource, [

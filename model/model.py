@@ -21,9 +21,9 @@ T = TypeVar('T', bound='Model')
 
 class Model(Base, Observable):
     """
-    Classe de base pour tous les modèles Pyloquent.
+    Base class for all Pyloquent models.
     
-    Exemple d'utilisation:
+    Example usage:
         class User(Model):
             _table_name = 'users'
             _casts = {
@@ -35,10 +35,10 @@ class Model(Base, Observable):
             def posts(self):
                 return self.has_many(Post, 'user_id')
                 
-        # Création
+        # Creation
         user = User.create(name='John', email='john@example.com')
         
-        # Requêtes
+        # Queries
         active_users = User.query()\
             .where('is_active', True)\
             .with_('posts')\
@@ -78,7 +78,7 @@ class Model(Base, Observable):
         self._loaded_relations = set()
     
     def _get_attribute(self, key: str) -> Any:
-        """Récupère un attribut avec cast si nécessaire"""
+        """Get an attribute with cast if necessary"""
         value = self._attributes.get(key)
         
         if key in self._casts:
@@ -90,7 +90,7 @@ class Model(Base, Observable):
         return value
         
     def _set_attribute(self, key: str, value: Any):
-        """Définit un attribut avec cast si nécessaire"""
+        """Set an attribute with cast if necessary"""
         if key in self._casts:
             value = AttributeCaster.cast(value, self._casts[key])
             
@@ -98,10 +98,10 @@ class Model(Base, Observable):
     
     @classmethod
     def query(cls) -> QueryBuilder:
-        """Obtient une nouvelle instance de QueryBuilder"""
+        """Get a new instance of QueryBuilder"""
         builder = QueryBuilder(cls)
         
-        # Applique les scopes globaux
+        # Apply global scopes
         for scope_class in cls._global_scopes:
             scope = scope_class()
             if scope.should_apply(cls):
@@ -111,24 +111,35 @@ class Model(Base, Observable):
     
     @classmethod
     def with_trashed(cls):
-        """Inclut les éléments soft-deleted"""
+        """
+        Include soft-deleted elements
+        
+        Example:
+            User.query().with_trashed().get()
+        """
         return cls.query().with_trashed()
     
     def validate(self):
-        """Valide le modèle selon les règles définies"""
+        """
+        Validate the model according to the defined rules
+        
+        Example:
+            user = User.create(name='John', email='john@example.com')
+            user.validate()
+        """
         validator = Validator(self._attributes, self._rules)
         return validator.validate()
     
     @classmethod
     def create(cls, **attributes) -> T:
         """
-        Crée et sauvegarde une nouvelle instance du modèle.
+        Create and save a new instance of the model.
         
         Args:
-            **attributes: Attributs du modèle
+            **attributes: Model attributes
             
         Returns:
-            Une nouvelle instance sauvegardée
+            A new saved instance
             
         Example:
             user = User.create(
@@ -143,10 +154,10 @@ class Model(Base, Observable):
         
     def save(self):
         """
-        Sauvegarde le modèle avec validation et événements.
+        Save the model with validation and events.
         
         Raises:
-            ValidationError: Si la validation échoue
+            ValidationError: If the validation fails
         """
         self.fire_event('saving')
         
@@ -179,7 +190,13 @@ class Model(Base, Observable):
             raise
     
     def delete(self):
-        """Supprime le modèle avec événements"""
+        """
+        Delete the model with events
+        
+        Example:
+            user = User.find(1)
+            user.delete()
+        """
         self.fire_event('deleting')
         
         session = self.get_session()
@@ -202,35 +219,51 @@ class Model(Base, Observable):
     @classmethod
     def with_(cls, *relations):
         """
-        Crée une requête avec chargement eager des relations.
+        Create a query with eager loading of relations.
         
         Args:
-            *relations: Relations à charger
-                - str: Nom de la relation
-                - callable: Configuration de la relation
+            *relations: Relations to load
+                - str: Relation name
+                - callable: Relation configuration
         """
         query = cls.query()
         for relation in relations:
             if callable(relation):
-                # Pour les relations avec des contraintes
+                # For relations with constraints
                 query = relation(query)
             else:
-                # Pour les relations simples
+                # For simple relations
                 query = query.with_(relation)
         return query
         
     @classmethod
     def find(cls, id):
-        """Find a model by its primary key."""
+        """
+        Find a model by its primary key.
+        
+        Example:
+            user = User.find(1)
+        """
         return cls.query().find(id)
         
     @classmethod
     def where(cls, *args, **kwargs):
-        """Add a basic where clause to the query."""
+        """
+        Add a basic where clause to the query.
+        
+        Example:
+            users = User.where('age', '>', 18).get()
+        """
         return cls.query().where(*args, **kwargs)
     
     def to_pydantic(self) -> BaseModel:
-        """Convertit le modèle en instance Pydantic."""
+        """
+        Convert the model to a Pydantic instance.
+        
+        Example:
+            user = User.find(1)
+            user_dict = user.to_pydantic()
+        """
         if not self.Schema:
             fields = {
                 column.key: (self._get_python_type(column.type), ...)
@@ -250,38 +283,62 @@ class Model(Base, Observable):
         return cls(**schema.model_dump(exclude_unset=True))
 
     def belongs_to(self, related: str, foreign_key: str, owner_key: str = 'id') -> 'BelongsTo':
-        """Crée une relation belongs_to"""
+        """
+        Create a belongs_to relation
+        
+        Example:
+            user = User.find(1)
+            user.belongs_to('posts', foreign_key='user_id')
+        """
         from ..relations import BelongsTo
         from ..model.registry import ModelRegistry
         related_class = ModelRegistry.resolve(related)
         return BelongsTo(self, related_class, foreign_key, owner_key)
         
     def has_many(self, related: str, foreign_key: str, local_key: str = 'id') -> 'HasMany':
-        """Crée une relation has_many"""
+        """
+        Create a has_many relation
+        
+        Example:
+            user = User.find(1)
+            user.has_many('posts', foreign_key='user_id')
+        """
         from ..relations import HasMany
         from ..model.registry import ModelRegistry
         related_class = ModelRegistry.resolve(related)
         return HasMany(self, related_class, foreign_key, local_key)
         
     def has_one(self, related: str, foreign_key: str, local_key: str = 'id') -> 'HasOne':
-        """Crée une relation has_one"""
+        """
+        Create a has_one relation
+        
+        Example:
+            user = User.find(1)
+            user.has_one('post', foreign_key='user_id')
+        """
         from ..relations import HasOne
         from ..model.registry import ModelRegistry
         related_class = ModelRegistry.resolve(related)
         return HasOne(self, related_class, foreign_key, local_key)
 
     def __getattr__(self, key: str) -> Any:
-        """Gère l'accès aux attributs et relations"""
-        # Vérifie d'abord les attributs castés
+        """
+        Handle access to attributes and relations
+        
+        Example:
+            user = User.find(1)
+            user.name
+        """
+        # Check first the casted attributes
         if key in self._casts:
             value = self._attributes.get(key)
             return CastRegistry.cast(value, self._casts[key])
             
-        # Vérifie les relations chargées
+        # Check the loaded relations
         if key in self._relations:
             return self._relations[key]
             
-        # Vérifie les méthodes de relation
+        # Check the relation methods
         if hasattr(self.__class__, key):
             method = getattr(self.__class__, key)
             if callable(method):
@@ -295,7 +352,13 @@ class Model(Base, Observable):
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
     
     def __setattr__(self, key: str, value: Any):
-        """Gère l'assignation des attributs avec cast."""
+        """
+        Handle the assignment of attributes with cast.
+        
+        Example:
+            user = User.find(1)
+            user.name = 'John'
+        """
         if key in self._casts:
             cast_class = CastRegistry.get(self._casts[key])
             if isinstance(cast_class, type) and issubclass(cast_class, Cast):
@@ -304,7 +367,12 @@ class Model(Base, Observable):
 
     @classmethod
     def set_connection(cls, connection_or_url):
-        """Configure la connexion à la base de données"""
+        """
+        Configure the connection to the database
+        
+        Example:
+            User.set_connection('sqlite://')
+        """
         if isinstance(connection_or_url, str):
             engine = create_engine(connection_or_url)
         else:
@@ -316,14 +384,24 @@ class Model(Base, Observable):
         
     @classmethod
     def get_session(cls):
-        """Récupère la session courante"""
+        """
+        Get the current session
+        
+        Example:
+            session = User.get_session()
+        """
         if cls._session is None:
             raise RuntimeError("Database connection not configured. Call Model.set_connection() first.")
         return cls._session()
     
     @property
     def session(self):
-        """Récupère la session pour l'instance"""
+        """
+        Get the session for the instance
+        
+        Example:
+            session = User.session
+        """
         return self.get_session()
 
     @classmethod
@@ -331,7 +409,7 @@ class Model(Base, Observable):
         return AggregateBuilder(cls)
 
     def __init_subclass__(cls) -> None:
-        """Appelé quand une sous-classe est créée"""
+        """Called when a subclass is created"""
         super().__init_subclass__()
         if not cls.__abstract__:
             ModelRegistry.add(cls.__name__, cls) 

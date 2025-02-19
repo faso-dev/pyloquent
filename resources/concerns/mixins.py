@@ -2,16 +2,24 @@ from typing import Any, Dict, List, Optional, Union, Callable, Type
 from ..interfaces import ResourceInterface
 
 class ConditionalFieldsMixin:
-    """Mixin pour les champs conditionnels"""
+    """Mixin for conditional fields"""
     
     def when(
         self,
         condition: Union[bool, Callable],
         value: Any,
         default: Any = None
-    ) -> Any:
+    ) -> Optional[Any]:
+        """
+        Include a field conditionally.
+        
+        Example:
+            'is_admin': self.when(user.is_admin, True)
+        """
         if callable(condition):
             condition = condition(self.model)
+        # If the condition is false and default is None, return None
+        # which will cause the field to be omitted from the JSON
         return value if condition else default
         
     def when_loaded(
@@ -19,29 +27,38 @@ class ConditionalFieldsMixin:
         relation: str,
         callback: Optional[Callable] = None,
         default: Any = None
-    ) -> Any:
+    ) -> Optional[Any]:
         """
-        Inclut une relation seulement si elle a été explicitement chargée.
+        Include a relation only if it has been explicitly loaded.
         
         Example:
-            # Ne sera inclus que si author a été chargé avec with_()
             'author': self.when_loaded('author', lambda author: {
                 'id': author.id,
                 'name': author.name
             })
         """
-        # Vérifie si la relation a été explicitement chargée
+        # Check if the relation has been explicitly loaded
         if not hasattr(self.model, '_loaded_relations') or relation not in self.model._loaded_relations:
-            return default
+            # Return None to omit the field from the JSON
+            return None
             
-        # Récupère la relation
+        # Get the relation
         value = getattr(self.model, relation)
         
-        # Applique le callback si fourni
+        # Apply the callback if provided
         return callback(value) if callback and value else value
 
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the resource to a dictionary, omitting None values.
+        """
+        data = super().to_dict()
+        print(data)
+        # Filter out None values
+        return {k: v for k, v in data.items() if v is not None}
+
 class RelationshipFieldsMixin:
-    """Mixin pour les champs de relation"""
+    """Mixin for relationship fields"""
     
     def relation(
         self,
