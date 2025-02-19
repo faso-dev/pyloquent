@@ -201,3 +201,7 @@ class Collection(CollectionInterface[T], list):
         if hasattr(item, '__getitem__'):
             return item[key]
         raise ValueError(f"Impossible d'accéder à la clé {key}") 
+    
+def collect(items: List[T]) -> Collection[T]:
+    return Collection(items)
+
